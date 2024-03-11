@@ -5,6 +5,13 @@
 #include "glob/glob.hpp"
 #include "Luau/BuiltinDefinitions.h"
 
+#ifdef _WIN32
+#include <Windows.h>
+#include <io.h>
+#include <fcntl.h>
+#include <iostream>
+#endif
+
 LUAU_FASTFLAG(LuauStacklessTypeClone3)
 
 void WorkspaceFolder::openTextDocument(const lsp::DocumentUri& uri, const lsp::DidOpenTextDocumentParams& params)
@@ -45,7 +52,7 @@ void WorkspaceFolder::closeTextDocument(const lsp::DocumentUri& uri)
     auto config = client->getConfiguration(rootUri);
     auto moduleName = fileResolver.getModuleName(uri);
     frontend.markDirty(moduleName);
-
+    
     // Refresh workspace diagnostics to clear diagnostics on ignored files
     if (!config.diagnostics.workspace || isIgnoredFile(uri.fsPath()))
         clearDiagnosticsForFile(uri);
@@ -107,8 +114,8 @@ bool WorkspaceFolder::isDefinitionFile(const std::filesystem::path& path, const 
 
 // Runs `Frontend::check` on the module and DISCARDS THE TYPE GRAPH.
 // Uses the diagnostic type checker, so strictness and DM awareness is not enforced
-// NOTE: do NOT use this if you later retrieve a ModulePtr (via frontend.moduleResolver.getModule). Instead use `checkStrict`
-// NOTE: use `frontend.parse` if you do not care about typechecking
+// !NOTE: do NOT use this if you later retrieve a ModulePtr (via frontend.moduleResolver.getModule). Instead use `checkStrict`
+// !NOTE: use `frontend.parse` if you do not care about typechecking
 Luau::CheckResult WorkspaceFolder::checkSimple(const Luau::ModuleName& moduleName, bool runLintChecks)
 {
     // TODO: We do not need to store the type graphs. But it leads to a bad bug if we disable it so for now, we keep the type graphs
@@ -137,15 +144,47 @@ Luau::CheckResult WorkspaceFolder::checkSimple(const Luau::ModuleName& moduleNam
 // can often be hit
 void WorkspaceFolder::checkStrict(const Luau::ModuleName& moduleName, bool forAutocomplete)
 {
-    // HACK: note that a previous call to `Frontend::check(moduleName, { retainTypeGraphs: false })`
-    // and then a call `Frontend::check(moduleName, { retainTypeGraphs: true })` will NOT actually
-    // retain the type graph if the module is not marked dirty.
-    // We do a manual check and dirty marking to fix this
-    auto module = forAutocomplete ? frontend.moduleResolverForAutocomplete.getModule(moduleName) : frontend.moduleResolver.getModule(moduleName);
-    if (module && module->internalTypes.types.empty()) // If we didn't retain type graphs, then the internalTypes arena is empty
-        frontend.markDirty(moduleName);
+    try {
+        if (fileResolver.currentRequireData && strcmp(fileResolver.currentRequireData->currentSourceModuleName.c_str(), moduleName.c_str()) != 0) {
+            fileResolver.wipeCache();
+        }
 
-    frontend.check(moduleName, Luau::FrontendOptions{/* retainFullTypeGraphs: */ true, forAutocomplete, /* runLintChecks: */ false});
+        // FIX THIS CAUSING AN ERROR AND ALSO THE gotodefiniton link on shareds not working at first but then working on reopen
+        fileResolver.currentRequireData->sourceModules.clear();
+        
+        for (auto [name, _] : frontend.sourceNodes) {
+            std::string newName(name.data(), name.size());
+            fileResolver.currentRequireData->sourceModules.emplace_back(newName);
+        }
+
+        fileResolver.currentRequireData->currentSourceModuleName = std::string(moduleName);
+        fileResolver.currentRequireData->currentSourceComments.clear();
+
+        for (auto hotcomment : frontend.getSourceModule(moduleName)->hotcomments) {
+            Luau::HotComment comment;
+            comment.content = std::string(hotcomment.content);
+            comment.at = hotcomment.at;
+            comment.header = hotcomment.header;
+            comment.location = Luau::Location(hotcomment.location.begin, hotcomment.location.end);
+
+            fileResolver.currentRequireData->currentSourceComments.emplace_back(comment);
+        }
+
+        // HACK: note that a previous call to `Frontend::check(moduleName, { retainTypeGraphs: false })`
+        // and then a call `Frontend::check(moduleName, { retainTypeGraphs: true })` will NOT actually
+        // retain the type graph if the module is not marked dirty.
+        // We do a manual check and dirty marking to fix this
+        auto module = forAutocomplete ? frontend.moduleResolverForAutocomplete.getModule(moduleName) : frontend.moduleResolver.getModule(moduleName);
+        if (module && module->internalTypes.types.empty() || markFrontendDirty) {
+            // If we didn't retain type graphs, then the internalTypes arena is empty
+            markFrontendDirty = false;
+            frontend.markDirty(moduleName);
+        }
+
+        frontend.check(moduleName, Luau::FrontendOptions{/* retainFullTypeGraphs: */ true, forAutocomplete, /* runLintChecks: */ false});
+    } catch(std::exception err) {
+        std::cerr << "Error copying source module names: " << err.what() << "\n";
+    }
 }
 
 void WorkspaceFolder::indexFiles(const ClientConfiguration& config)
@@ -185,7 +224,7 @@ void WorkspaceFolder::indexFiles(const ClientConfiguration& config)
                     // We do not perform any type checking here
                     frontend.parse(moduleName);
 
-                    indexCount += 1;
+                    markFrontendDirty = true;
                 }
             }
         }
@@ -236,6 +275,9 @@ void WorkspaceFolder::initialize()
     Luau::registerBuiltinGlobals(frontend, frontend.globalsForAutocomplete, /* typeCheckForAutocomplete = */ true);
 
     Luau::attachTag(Luau::getGlobalBinding(frontend.globalsForAutocomplete, "require"), "Require");
+    Luau::attachTag(Luau::getGlobalBinding(frontend.globalsForAutocomplete, "shared"), "Shared");
+
+    // GetCurrentProcessId() gdb
 
     if (client->definitionsFiles.empty())
         client->sendLogMessage(lsp::MessageType::Warning, "No definitions file provided by client");

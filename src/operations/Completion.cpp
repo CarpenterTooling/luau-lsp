@@ -669,6 +669,7 @@ std::vector<lsp::CompletionItem> WorkspaceFolder::completion(const lsp::Completi
 
     auto moduleName = fileResolver.getModuleName(params.textDocument.uri);
     auto textDocument = fileResolver.getTextDocument(params.textDocument.uri);
+    
     if (!textDocument)
         throw JsonRpcException(lsp::ErrorCode::RequestFailed, "No managed text document for " + params.textDocument.uri.toString());
 
@@ -747,7 +748,7 @@ std::vector<lsp::CompletionItem> WorkspaceFolder::completion(const lsp::Completi
 
                 return result;
             }
-            else if (tag == "Require")
+            else if (tag == "Require" || tag == "Shared")
             {
                 if (!contents.has_value())
                     return std::nullopt;

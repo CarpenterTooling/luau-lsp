@@ -412,6 +412,7 @@ std::optional<lsp::SemanticTokens> WorkspaceFolder::semanticTokens(const lsp::Se
 
     auto tokens = getSemanticTokens(frontend, module, sourceModule);
     lsp::SemanticTokens result;
+
     result.data = packTokens(textDocument, tokens);
     return result;
 }

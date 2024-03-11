@@ -48,6 +48,10 @@ public:
     {
         fileResolver.client = std::static_pointer_cast<BaseClient>(client);
         fileResolver.rootUri = uri;
+
+        for (auto uri : client->workspaceFolders) {
+            frontend.source.workspaceFolders.emplace_back(uri);
+        }
     }
 
     // Initialises the workspace folder
@@ -83,6 +87,7 @@ private:
     lsp::WorkspaceEdit computeOrganiseRequiresEdit(const lsp::DocumentUri& uri);
     lsp::WorkspaceEdit computeOrganiseServicesEdit(const lsp::DocumentUri& uri);
     std::vector<Luau::ModuleName> findReverseDependencies(const Luau::ModuleName& moduleName);
+    bool markFrontendDirty = false;
 
 public:
     std::vector<std::string> getComments(const Luau::ModuleName& moduleName, const Luau::Location& node);

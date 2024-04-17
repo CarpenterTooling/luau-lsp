@@ -52,7 +52,7 @@ void WorkspaceFolder::closeTextDocument(const lsp::DocumentUri& uri)
     auto config = client->getConfiguration(rootUri);
     auto moduleName = fileResolver.getModuleName(uri);
     frontend.markDirty(moduleName);
-    
+
     // Refresh workspace diagnostics to clear diagnostics on ignored files
     if (!config.diagnostics.workspace || isIgnoredFile(uri.fsPath()))
         clearDiagnosticsForFile(uri);
@@ -155,16 +155,16 @@ void WorkspaceFolder::checkStrict(const Luau::ModuleName& moduleName, bool forAu
         // retain the type graph if the module is not marked dirty.
         // We do a manual check and dirty marking to fix this
         auto module = forAutocomplete ? frontend.moduleResolverForAutocomplete.getModule(moduleName) : frontend.moduleResolver.getModule(moduleName);
-        if (module && module->internalTypes.types.empty() || markFrontendDirty) {
-            // If we didn't retain type graphs, then the internalTypes arena is empty
-            markFrontendDirty = false;
-            frontend.markDirty(moduleName);
-        }
+		if (module && (module->internalTypes.types.empty() || markFrontendDirty)) {
+			// If we didn't retain type graphs, then the internalTypes arena is empty
+			markFrontendDirty = false;
+			frontend.markDirty(moduleName);
+		}
 
         frontend.check(moduleName, Luau::FrontendOptions{/* retainFullTypeGraphs: */ true, forAutocomplete, /* runLintChecks: */ false});
 
         fileResolver.currentRequireData->sourceModules.clear();
-        
+
         for (auto [name, _] : frontend.sourceNodes) {
             std::string newName(name.data(), name.size());
             fileResolver.currentRequireData->sourceModules.emplace_back(newName);

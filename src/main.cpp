@@ -73,7 +73,8 @@ void registerFastFlags(std::unordered_map<std::string, std::string>& fastFlags)
 
     for (auto& [key, _] : fastFlags)
     {
-        // std::cerr << "Unknown FFlag: " << key << "\n";
+		// why was this commented out?
+        std::cerr << "Unknown FFlag: " << key << "\n";
     }
 }
 

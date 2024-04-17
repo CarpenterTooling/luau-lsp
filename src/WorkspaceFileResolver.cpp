@@ -323,7 +323,7 @@ bool WorkspaceFileResolver::matchQueryToPieces(std::vector<std::string_view> que
     for(size_t i : indices(query)) {
         size_t qi = (queryNum - 1) - i;
         size_t pi = (piecesNum - 1) - i;
-        
+
         if (i >= piecesNum) {
             continue;
         }
@@ -347,12 +347,8 @@ std::optional<Luau::ModuleInfo> WorkspaceFileResolver::getSpecificModuleMatch(co
         shortenName = shortenName.substr(0, shortenName.find_last_of("."));
 
         std::vector<std::string_view> pieces = Luau::split(shortenName, '/');
-        
-        size_t piecesNum = 0;
 
-        for(size_t i : indices(pieces)) {
-            piecesNum += 1;
-        }
+        size_t piecesNum = pieces.size();
 
         bool matches = matchQueryToPieces(query, queryNum, pieces, piecesNum);
 
@@ -392,11 +388,7 @@ std::optional<Luau::ModuleInfo> WorkspaceFileResolver::getMatchFromString(const 
     }
 
     std::vector<std::string_view> query = Luau::split(str, '/');
-    size_t queryNum = 0;
-
-    for(size_t i : indices(query)) {
-        queryNum += 1;
-    }
+    size_t queryNum = query.size();
 
     // all known modules
     for (std::string name : currentRequireData->sourceModules) {
@@ -458,7 +450,7 @@ std::optional<Luau::ModuleInfo> WorkspaceFileResolver::resolveModule(const Luau:
             std::cerr << "Comment error: " << err.what() << "\n";
         }
     }
-    
+
     if (auto* expr = node->as<Luau::AstExprConstantString>())
     {
         std::string requiredString(expr->value.data, expr->value.size);
